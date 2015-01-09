@@ -1,0 +1,20 @@
+# coding=utf-8
+
+HASHTAG = '#party'
+HASHTAG_COMPLEMENTARY = '#hard'
+FB_PAGE = "partypage"
+
+BASIC_COLOR = [0xFF, 0xFF, 0xFF]
+LIKED_COLOR = [0xFF, 0x00, 0xFF]
+
+FACEBOOK_BLINK_COLOR = [0x6D, 0x8B, 0xC9] # Cyan
+TWITTER_BLINK_COLOR = [0x94, 0xE4, 0xE8] # Blue
+OFF_COLOR = [0x00, 0x00, 0x00] # Off / Black
+
+FB_LIKES_FACTOR = 10 # > 1
+
+# Twitter API
+APP_KEY = ''
+APP_SECRET = ''
+ACCESS_TOKEN = ''
+ACCESS_TOKEN_SECRET = ''
