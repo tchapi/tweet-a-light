@@ -23,16 +23,18 @@ RAINBOW_SEQUENCE = 0x0A
 FADE_SPEED = 60 # 1 = slow, 255 = instant
 TIME_ADJUST = 0 # 0 = default
 
+import multiprocessing
+
 # FB
-ORIGINAL_FB_LIKES = 0
-PREVIOUS_FB_LIKES = 0
-FB_LIKES = 0
+FBvars = multiprocessing.Manager().dict()
+FBvars['ORIGINAL_FB_LIKES'] = 0
+FBvars['FB_LIKES'] = 0
 
 # I2C ADDRESS
 DEVICE_ADDRESS = 0x09
 #DEVICE_ADDRESS = 0x00 # General Broadcast Call
 
-import threading, time, smbus, urllib, json
+import time, smbus, urllib, json
 from twython import Twython, TwythonStreamer
 from pygame import mixer
 
@@ -57,66 +59,73 @@ class Debug():
   def println(level, message):
     print "  # " + Debug.colors[level] + level + Debug.colors["ENDC"] + " : " + message
 
+
+#####################################
+#        Wrapper for WebServer      #
+#####################################
+from bottle import route, run, template
+
+class BottleWrapper(multiprocessing.Process):
+
+    @route('/')
+    def index():
+        global HASHTAG, HASHTAG_COMPLEMENTARY, FB_PAGE
+        str_fb = '<b>Facebook Likes </b>: ' + str(FBvars['FB_LIKES']) + ', <b>up </b> ' + str(float(FBvars['FB_LIKES'] - FBvars['ORIGINAL_FB_LIKES']) / FBvars['ORIGINAL_FB_LIKES'] * 100) + '%'
+        str_conf = '<b>Hashtag </b>: <input value="' + HASHTAG + '" type="text"><br>'
+        str_conf += '<b>Complementary Hashtag </b>: <input value="' + HASHTAG_COMPLEMENTARY + '" type="text"><br>'
+        str_conf += '<b>Facebook page </b>: http://www.facebook.com/<input value="' + FB_PAGE + '" type="text"> (<a href="http://graph.facebook.com/' + FB_PAGE + '/" target="_blank">See page graph</a>)'
+        return template('<h1>TOTEM</h1>' + str_fb + '<h2>Configuration</h2>' + str_conf)
+
+    def run(self):
+      Debug.println("NOTICE", "Process started for web server on port 8080")
+      try:
+        run(host='totem1.local', port=8080)
+      finally:
+        Debug.println("NOTICE", "Webserver process stopped.")
+
+
 #####################################
 #        Wrapper for FB likes       #
 #####################################
-class FBWrapper:
+class FBWrapper(multiprocessing.Process):
 
-    def __init__(self,led):
+    def run(self):
+        global FB_PAGE
+        FBWrapper.url = "http://graph.facebook.com/" + FB_PAGE + "/"
+        Debug.println("NOTICE", "Process started for Facebook likes")
 
-        self.url = "http://graph.facebook.com/" + FB_PAGE + "/"
-        self.led = led
+        FBvars['ORIGINAL_FB_LIKES'] = FBWrapper.get_likes()
+        Debug.println("INFO", "Getting original Facebook likes : %s" % str(FBvars['ORIGINAL_FB_LIKES']))
 
-        # Run the Pianette!
-        self._timer = None
-        self._timer_interval = 1 # 1 second
-        self._timer_is_running = False
+        try:
+            while (True):
+                time.sleep(1)
+                FBWrapper.check_fb()
 
-        # Start the timer thread that will cycle buffered states at each interval
-        self.start_timer()
-        Debug.println("INFO", "Thread started each %f sec" % self._timer_interval)
+        except KeyboardInterrupt:
+            Debug.println("NOTICE", "Facebook process stopped.")
 
-    def __del__(self):
-        if hasattr(self, '_timer'):
-            self.stop_timer()
-
-    # Timer Methods
-    def _run_timer(self):
-        self._timer_is_running = False
-        self.start_timer()
-        self.check_fb()
-
-    def start_timer(self):
-        if not self._timer_is_running:
-            self._timer = threading.Timer(self._timer_interval, self._run_timer)
-            self._timer.start()
-            self.is_running = True
-
-    def stop_timer(self):
-        self._timer.cancel()
-        self._timer_is_running = False
-
-    def check_fb(self):
-        global FB_LIKES, ORIGINAL_FB_LIKES
-
+    @staticmethod
+    def check_fb():
         # For comparison
-        PREVIOUS_FB_LIKES = FB_LIKES
+        PREVIOUS_FB_LIKES = FBvars['FB_LIKES']
 
         # Retrieve new like figure
-        FB_LIKES = self.get_likes()
+        FBvars['FB_LIKES'] = FBWrapper.get_likes()
     
-        if (FB_LIKES > PREVIOUS_FB_LIKES and PREVIOUS_FB_LIKES > 0):
+        if (FBvars['FB_LIKES'] > PREVIOUS_FB_LIKES and PREVIOUS_FB_LIKES > 0):
         
-            percentage = FB_LIKES_FACTOR * float(FB_LIKES - ORIGINAL_FB_LIKES) / ORIGINAL_FB_LIKES
-            Debug.println("SUCCESS", "New Facebook like (Total: %s, up %d%%)" % (FB_LIKES, int(percentage*100)))
+            percentage = FB_LIKES_FACTOR * float(FBvars['FB_LIKES'] - FBvars['ORIGINAL_FB_LIKES']) / FBvars['ORIGINAL_FB_LIKES']
+            Debug.println("SUCCESS", "New Facebook like (Total: %s, up %d%%)" % (FBvars['FB_LIKES'], int(percentage*100/FB_LIKES_FACTOR)))
         
             # We have to recompute the color
-            self.led.compute_color_for_percentage(percentage)
+            led.compute_color_for_percentage(percentage)
             # And play the light animation
-            self.led.play_facebook()
+            led.play_facebook()
 
-    def get_likes(self):
-        response = urllib.urlopen(self.url);
+    @staticmethod
+    def get_likes():
+        response = urllib.urlopen(FBWrapper.url);
         data = json.loads(response.read())
         return data['likes']
 
@@ -137,7 +146,7 @@ class BlinkMWrapper():
     Debug.println("INFO", "BlinkM state reset")
 
     # If we need to upload a new script (TODO : parameter of the app)
-    if False:
+    if sys.argv == "--upload-script":
         self.upload_home_script()
 
   def reset_state(self):
@@ -251,6 +260,9 @@ class BlinkMWrapper():
         self.bus.write_i2c_block_data(DEVICE_ADDRESS, FADE_RGB, self.general_color)
 
 
+#####################################
+#     Twitter Stream API wrapper    #
+#####################################
 class MyStreamer(TwythonStreamer):
     def on_success(self, data):
         if 'text' in data:
@@ -274,7 +286,19 @@ class MyStreamer(TwythonStreamer):
         Debug.println("FAIL", "Error %d" % status_code)
         # self.disconnect()
 
-Debug.println("NOTICE", "Starting application ...")
+
+class TwitterWrapper(multiprocessing.Process):
+
+    def run(self):
+      Debug.println("NOTICE", "Process started for Twitter stream %s(%s)... " % (HASHTAG, HASHTAG_COMPLEMENTARY))
+      stream = MyStreamer(APP_KEY, APP_SECRET, ACCESS_TOKEN, ACCESS_TOKEN_SECRET)
+      try:
+        stream.statuses.filter(track=HASHTAG)
+      except KeyboardInterrupt:
+        Debug.println("NOTICE", "Twitter process stopped.")
+
+
+Debug.println("SUCCESS", "Starting application ...")
 
 # Instantiate the LED via I2C
 led = BlinkMWrapper()
@@ -286,16 +310,41 @@ Debug.println("INFO", "Creating sound : glass.wav")
 notification_sound = mixer.Sound('sounds/glass.wav')
 
 # Getting FB likes
-fb = FBWrapper(led)
-ORIGINAL_FB_LIKES = fb.get_likes()
-Debug.println("INFO", "Getting original Facebook likes : %s" % str(ORIGINAL_FB_LIKES))
+FBWrapper().start()
 
-# Starting lights !
-Debug.println("INFO", "Blinking lights !")
-led.init_sequence()
+# Start web server
+BottleWrapper().start()
 
 # Get Twitter stream
-stream = MyStreamer(APP_KEY, APP_SECRET, ACCESS_TOKEN, ACCESS_TOKEN_SECRET)
-Debug.println("NOTICE", "Starting Twitter stream for %s(%s)... " % (HASHTAG, HASHTAG_COMPLEMENTARY))
-stream.statuses.filter(track=HASHTAG)
- 
+TwitterWrapper().start()
+
+# Wait for processes to start 
+time.sleep(2)
+
+# Starting lights !
+Debug.println("INFO", "Blinking lights ! Ready to start !")
+led.init_sequence()
+
+try:
+    while(True):
+        pass
+except KeyboardInterrupt:
+    Debug.println("NOTICE", "Finishing threads ...")
+
+    try:
+        BottleWrapper().join(1)
+    except AssertionError:
+        pass
+    try:
+        TwitterWrapper().join(1)
+    except AssertionError:
+        pass
+    try:
+        FBWrapper().join(1)
+    except AssertionError:
+        pass
+
+    time.sleep(2)
+    Debug.println("SUCCESS", "All Threads terminated, exiting ...")
+    sys.exit(0)
+
