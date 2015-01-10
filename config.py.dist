@@ -18,3 +18,5 @@ APP_KEY = ''
 APP_SECRET = ''
 ACCESS_TOKEN = ''
 ACCESS_TOKEN_SECRET = ''
+
+SOUNDS_PATH = "/home/pi/firmware/sounds/"
