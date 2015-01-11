@@ -1,5 +1,7 @@
 # coding=utf-8
 
+ID = 1
+
 HASHTAG = '#party'
 HASHTAG_COMPLEMENTARY = '#hard'
 FB_PAGE = "partypage"
@@ -19,4 +21,4 @@ APP_SECRET = ''
 ACCESS_TOKEN = ''
 ACCESS_TOKEN_SECRET = ''
 
-SOUNDS_PATH = "/home/pi/firmware/sounds/"
+GLOBAL_PATH = "/home/pi/firmware/"

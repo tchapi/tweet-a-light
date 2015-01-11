@@ -59,18 +59,31 @@ class Debug():
 #####################################
 #        Wrapper for WebServer      #
 #####################################
-from bottle import route, run, template
+from bottle import route, run, template, static_file
 
 class BottleWrapper(multiprocessing.Process):
 
+    @route('/static/<filepath:path>')
+    def server_static(filepath):
+        return static_file(filepath, root= GLOBAL_PATH + "/static")
+
     @route('/')
     def index():
-        global HASHTAG, HASHTAG_COMPLEMENTARY, FB_PAGE
-        str_fb = '<b>Facebook Likes </b>: ' + str(FBvars['FB_LIKES']) + ', <b>up </b> ' + str(float(FBvars['FB_LIKES'] - FBvars['ORIGINAL_FB_LIKES']) / FBvars['ORIGINAL_FB_LIKES'] * 100) + '%'
-        str_conf = '<b>Hashtag </b>: <input value="' + HASHTAG + '" type="text"><br>'
-        str_conf += '<b>Complementary Hashtag </b>: <input value="' + HASHTAG_COMPLEMENTARY + '" type="text"><br>'
-        str_conf += '<b>Facebook page </b>: http://www.facebook.com/<input value="' + FB_PAGE + '" type="text"> (<a href="http://graph.facebook.com/' + FB_PAGE + '/" target="_blank">See page graph</a>)'
-        return template('<h1>TOTEM</h1>' + str_fb + '<h2>Configuration</h2>' + str_conf)
+        global HASHTAG, HASHTAG_COMPLEMENTARY, FB_PAGE, ID
+
+        percentage = round(float(FBvars['FB_LIKES'] - FBvars['ORIGINAL_FB_LIKES']) / FBvars['ORIGINAL_FB_LIKES'] * 100, 2) # float
+
+        tpl_vars = {
+            "fb_likes" : FBvars['FB_LIKES'],
+            "instance_id": ID,
+            "fb_page" : FB_PAGE,
+            "hashtag" : HASHTAG,
+            "hashtag_complementary" : HASHTAG_COMPLEMENTARY,
+            "percentage" : percentage,
+            "color": "#00BCD4" # TODO
+        }
+
+        return template('index', **tpl_vars)
 
     def run(self):
       Debug.println("NOTICE", "Process started for web server on port 8080")
@@ -314,7 +327,7 @@ class SoundsWrapper:
         Debug.println("INFO", "Creating audio mixer ...")
         mixer.init()
 
-        sounds = glob.glob(SOUNDS_PATH + "/*.wav")
+        sounds = glob.glob(GLOBAL_PATH + "/sounds/*.wav")
         self.notification_sounds = list()
         for s in sounds:
             Debug.println("INFO", "Creating sound : %s" % s)
@@ -324,7 +337,6 @@ class SoundsWrapper:
         random.choice(self.notification_sounds).play()
 
     def __del__(self):
-        mixer.stop()
         mixer.quit()
 
 Debug.println("SUCCESS", "Starting application ...")
