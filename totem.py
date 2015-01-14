@@ -197,7 +197,7 @@ class BlinkMWrapper():
     Debug.println("INFO", "BlinkM state reset")
 
     # If we need to upload a new script (TODO : parameter of the app)
-    if sys.argv == "--upload-script":
+    if 1 < len(sys.argv) and sys.argv[1] == "--upload-script":
         self.upload_home_script()
 
   def reset_state(self):
