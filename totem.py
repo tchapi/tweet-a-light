@@ -174,7 +174,7 @@ class FBWrapper(multiprocessing.Process):
 
     @staticmethod
     def get_likes():
-        response = urllib.urlopen("http://graph.facebook.com/" + common['FB_PAGE'] + "/");
+        response = urllib.urlopen("http://graph.facebook.com/" + common['FB_PAGE'] + "/")
         data = json.loads(response.read())
         return data['likes']
 
@@ -386,15 +386,15 @@ class TwitterWrapper(multiprocessing.Process):
 #####################################
 #    Instagram Stream API wrapper   #
 #####################################
-from instagram import client, subscriptions
-from instagram.client import InstagramAPI
-
 class InstagramWrapper(multiprocessing.Process):
 
     def run(self):
-        global CLIENT_ID, CLIENT_SECRET
-        InstagramWrapper.api = InstagramAPI(client_id=CLIENT_ID, client_secret=CLIENT_SECRET)
-        InstagramWrapper.max_tag_id = 0 # start off with 0
+
+        # Get latest min_id
+        response = urllib.urlopen("https://api.instagram.com/v1/tags/" + common['HASHTAG'][1:] + "/media/recent?client_id=" + CLIENT_ID)
+        data = json.loads(response.read())
+        InstagramWrapper.min_id = int(data['pagination']['min_tag_id'])
+        Debug.println("INFO", "Getting original Instagram min_id : %d" % InstagramWrapper.min_id)
 
         try:
             while (True):
@@ -406,14 +406,16 @@ class InstagramWrapper(multiprocessing.Process):
 
     @staticmethod
     def check_tags():
+        global CLIENT_ID
         # get recent
-        instagram_post, next = InstagramWrapper.api.tag_recent_media(1, InstagramWrapper.max_tag_id, common['HASHTAG'][1:])
-
-        if len(instagram_post) > 0:
+        response = urllib.urlopen("https://api.instagram.com/v1/tags/" + common['HASHTAG'][1:] + "/media/recent?count=1&client_id=" + CLIENT_ID + ("&min_id=%d" % InstagramWrapper.min_id))
+        data = json.loads(response.read())
+        
+        if len(data['data']) > 0:
             # Play the animation
             led.play_instagram()
-            Debug.println("SUCCESS", "New Instagram : " + instagram_post[0].images['standard_resolution'].url)
-            InstagramWrapper.max_tag_id = instagram_post[0].id
+            Debug.println("SUCCESS", "New Instagram (%s) : %s " % (data['data'][0]['id'], data['data'][0]['images']['standard_resolution']['url']))
+            InstagramWrapper.min_id = int(data['pagination']['min_tag_id'])
 
 #####################################
 #     Twitter Stream API wrapper    #
@@ -473,7 +475,7 @@ instagram_process.start()
 time.sleep(2)
 
 # Starting lights and sound !
-sound.play_random_sound()
+sound.play_startup_sound()
 Debug.println("SUCCESS", "Blinking lights ! Ready to start !")
 led.init_sequence()
 
