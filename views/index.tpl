@@ -5,24 +5,32 @@
     <style type="text/css">
 
       @import url(http://fonts.googleapis.com/css?family=Oswald);
+      <%
+        base_color = "#" + '{0:06X}'.format(color)
+        dark_color = "#" + '{0:06X}'.format(color - 0x001111)
+        darker_color = "#" + '{0:06X}'.format(color - 0x002222)
+        light_color = "#" + '{0:06X}'.format(color + 0x001111)
+        lighter_color = "#" + '{0:06X}'.format(color + 0x002222)
 
+        link_color = "#" + '{0:06X}'.format(color - 0x004444)
+      %>
       html, body {
-        background: #00BCD4;
         color: white;
         text-align: center;
         padding-top: 20px;
         padding-bottom: 20px;
         margin: 0;
         font-family: "Oswald", "Helvetica Neue", "Helvetica", "Verdana", "Arial", sans-serif;
+        background: {{ base_color }};
       }
 
       a {
-        color: #007890;
         text-decoration: none;
+        color: {{ link_color }};
       }
 
       a:hover {
-        color: #00DEF6;
+        color: {{ lighter_color }};
       }
 
       div.title > h1 {
@@ -34,7 +42,7 @@
       }
       div.title > h1 > span{
         text-transform: uppercase;
-        color: #00ABC3;
+        color: {{ dark_color }};
       }
 
 
@@ -55,14 +63,14 @@
       }
       div.status div.legend {
         font-size: 2em;
-        color: #00DEF6;
+        color: {{ lighter_color }};
       }
       div.status div.legend img{
         margin-right: 5px;
         opacity: 0.35;
       }
       div.status em {
-        color: #009AB2;
+        color: {{ darker_color }};
       }
       div.config {
         text-transform: uppercase;
@@ -79,27 +87,27 @@
       input {
         border: none;
         outline: none;
-        color: #009AB2;
+        color: {{ darker_color }};
         text-transform: uppercase;
-        background: #00CDE5;
         width: 300px;
         padding: 10px;
         margin: 5px;
+        background: {{ light_color }};
       }
       *::-webkit-input-placeholder {
-          color: #00ABC3;
+          color: {{ dark_color }};
       }
       *:-moz-placeholder {
           /* FF 4-18 */
-          color: #00ABC3;
+          color: {{ dark_color }};
       }
       *::-moz-placeholder {
           /* FF 19+ */
-          color: #00ABC3;
+          color: {{ dark_color }};
       }
       *:-ms-input-placeholder {
           /* IE 10+ */
-          color: #00ABC3;
+          color: {{ dark_color }};
       }
 
       label {
@@ -108,9 +116,17 @@
         text-align: right;
       }
 
-      .fb_page {
+      .button_right {
         position: absolute;
         padding: 8px 0;
+        cursor: pointer;
+      }
+
+      .button_page {
+        position: absolute;
+        margin-left: -22px;
+        padding: 8px 0;
+        cursor: pointer;
       }
 
     </style>
@@ -131,10 +147,53 @@
 
     <div class="config">
       <div class="title">Configuration</div>
-      <div><label for="hashtag">Hashtag :</label><input id="hashtag" name="hashtag" value="{{ hashtag }}" type="text" class="hashtag" placeholder="#hashtag" onfocus="this.select();" onmouseup="return false;"></div>
-      <div><label for="complementary">Power hashtag :</label><input id="complementary" name="complementary" value="{{ hashtag_complementary }}" type="text" class="hashtag power" placeholder="#powertag" onfocus="this.select();" onmouseup="return false;"></div>
-      <div><label for="facebook">Facebook page :</label><input id="facebook" name="facebook" value="{{ fb_page }}" type="text" placeholder="pagename" onfocus="this.select();" onmouseup="return false;"><a href="http://graph.facebook.com/{{ fb_page }}/" target="_blank" class="fb_page" title="Go to page">▶</a></div>
+      <div><label for="hashtag">Hashtag :</label><input id="hashtag" name="hashtag" value="{{ hashtag }}" type="text" class="hashtag" placeholder="#hashtag"><a class="button_right" id="save_hashtag" onClick="change_hashtag()">Save</a></div>
+      <div><label for="complementary">Power hashtag :</label><input id="complementary" name="complementary" value="{{ hashtag_complementary }}" type="text" class="hashtag power" placeholder="#powertag"><a class="button_right" id="save_complementary" onClick="change_complementary_hashtag()">Save</a></div>
+      <div><label for="facebook">Facebook page :</label><input id="facebook" name="facebook" value="{{ fb_page }}" type="text" placeholder="pagename"><a href="http://graph.facebook.com/{{ fb_page }}/" target="_blank" class="button_page" title="Go to page">▶</a><a class="button_right" id="save_facebook" onClick="change_page()">Save</a></div>
     </div>
 
+    <script type="text/javascript">
+
+    var change_hashtag = function() {
+      var url = "/hashtag";
+      var params = "hashtag=" + document.getElementById('hashtag').value;
+      send_post(url, params);
+    };
+
+    var change_complementary_hashtag = function() {
+      var url = "/hashtag/complementary";
+      var params = "complementary_hashtag=" + document.getElementById('complementary').value;
+      send_post(url, params);
+    };
+
+    var change_page = function() {
+      var url = "/facebook";
+      var params = "page=" + document.getElementById('facebook').value;
+      send_post(url, params);
+      // Now reload page
+      window.location.reload()
+    };
+
+    var send_post = function(url, params) {
+      var http = new XMLHttpRequest();
+
+      http.open("POST", url, true);
+
+      //Send the proper header information along with the request
+      http.setRequestHeader("Content-type", "application/x-www-form-urlencoded");
+      http.setRequestHeader("Content-length", params.length);
+      http.setRequestHeader("Connection", "close");
+
+      http.onreadystatechange = function() {//Call a function when the state changes.
+        if(http.readyState == 4 && http.status == 200) {
+          console.log(http.responseText);
+        }
+      }
+      http.send(params);
+    }
+
+
+
+    </script>
   </body>
 </html>

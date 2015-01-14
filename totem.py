@@ -1,6 +1,11 @@
 # coding=utf-8
 
-execfile("config.py")
+execfile('config.py')
+
+import ConfigParser
+TOTEM_CONFIG = GLOBAL_PATH + '/config.ini'
+config = ConfigParser.ConfigParser()
+config.read(TOTEM_CONFIG)
 
 # BlinkM Codes
 GOTO_RGB = 0x6e
@@ -26,9 +31,15 @@ TIME_ADJUST = 0 # 0 = default
 import multiprocessing, time
 
 # FB
-FBvars = multiprocessing.Manager().dict()
-FBvars['ORIGINAL_FB_LIKES'] = 0
-FBvars['FB_LIKES'] = 0
+common = multiprocessing.Manager().dict()
+common['ORIGINAL_FB_LIKES'] = 0
+common['FB_LIKES'] = 0
+common['ID'] = ID
+common['FB_PAGE'] = config.get('TOTEM', 'FB_PAGE')
+common['HASHTAG'] = config.get('TOTEM', 'HASHTAG')
+common['HASHTAG_COMPLEMENTARY'] = config.get('TOTEM', 'HASHTAG_COMPLEMENTARY')
+common['RELOAD_TWITTER'] = False
+common['SAVE_DATA'] = False
 
 # I2C ADDRESS
 DEVICE_ADDRESS = 0x09
@@ -39,6 +50,8 @@ DEVICE_ADDRESS = 0x09
 #       Just some display stuff     #
 #####################################
 import tty, sys, termios
+import logging
+logging.basicConfig(filename=GLOBAL_PATH + '/totem.log',level=logging.DEBUG)
 
 class Debug():
 
@@ -53,13 +66,14 @@ class Debug():
 
   @staticmethod
   def println(level, message):
+    logging.info("(" + level + ") " + message)
     print "  # " + Debug.colors[level] + level + Debug.colors["ENDC"] + " : " + message
 
 
 #####################################
 #        Wrapper for WebServer      #
 #####################################
-from bottle import route, run, template, static_file
+from bottle import route, run, template, static_file, request, post
 
 class BottleWrapper(multiprocessing.Process):
 
@@ -67,20 +81,40 @@ class BottleWrapper(multiprocessing.Process):
     def server_static(filepath):
         return static_file(filepath, root= GLOBAL_PATH + "/static")
 
+    @post('/hashtag')
+    def change_hashtag():
+        new_hashtag = request.POST.get('hashtag')
+        common['HASHTAG'] = new_hashtag
+        common['RELOAD_TWITTER'] = True
+        common['SAVE_DATA'] = True
+
+    @post('/hashtag/complementary')
+    def change_complementary_hashtag():
+        new_complementary_hashtag = request.POST.get('complementary_hashtag')
+        common['HASHTAG_COMPLEMENTARY'] = new_complementary_hashtag
+        common['RELOAD_TWITTER'] = True
+        common['SAVE_DATA'] = True
+
+    @post('/facebook')
+    def change_fb_page():
+        new_page = request.POST.get('page')
+        common['FB_PAGE'] = new_page
+        common['ORIGINAL_FB_LIKES'] = FBWrapper.get_likes()
+        common['SAVE_DATA'] = True
+
     @route('/')
     def index():
-        global HASHTAG, HASHTAG_COMPLEMENTARY, FB_PAGE, ID
 
-        percentage = round(float(FBvars['FB_LIKES'] - FBvars['ORIGINAL_FB_LIKES']) / FBvars['ORIGINAL_FB_LIKES'] * 100, 2) # float
+        percentage = round(float(common['FB_LIKES'] - common['ORIGINAL_FB_LIKES']) / common['ORIGINAL_FB_LIKES'] * 100, 2) # float
 
         tpl_vars = {
-            "fb_likes" : FBvars['FB_LIKES'],
-            "instance_id": ID,
-            "fb_page" : FB_PAGE,
-            "hashtag" : HASHTAG,
-            "hashtag_complementary" : HASHTAG_COMPLEMENTARY,
+            "fb_likes" : common['FB_LIKES'],
+            "instance_id": common['ID'],
+            "fb_page" : common['FB_PAGE'],
+            "hashtag" : common['HASHTAG'],
+            "hashtag_complementary" : common['HASHTAG_COMPLEMENTARY'],
             "percentage" : percentage,
-            "color": "#00BCD4" # TODO
+            "color": COLOR
         }
 
         return template('index', **tpl_vars)
@@ -101,12 +135,10 @@ import urllib, json
 class FBWrapper(multiprocessing.Process):
 
     def run(self):
-        global FB_PAGE
-        FBWrapper.url = "http://graph.facebook.com/" + FB_PAGE + "/"
         Debug.println("NOTICE", "Process started for Facebook likes")
 
-        FBvars['ORIGINAL_FB_LIKES'] = FBWrapper.get_likes()
-        Debug.println("INFO", "Getting original Facebook likes : %s" % str(FBvars['ORIGINAL_FB_LIKES']))
+        common['ORIGINAL_FB_LIKES'] = FBWrapper.get_likes()
+        Debug.println("INFO", "Getting original Facebook likes : %s" % str(common['ORIGINAL_FB_LIKES']))
 
         try:
             while (True):
@@ -117,17 +149,23 @@ class FBWrapper(multiprocessing.Process):
             Debug.println("NOTICE", "Facebook process stopped.")
 
     @staticmethod
+    def reinit():
+
+        common['ORIGINAL_FB_LIKES'] = FBWrapper.get_likes()
+        Debug.println("INFO", "Getting original Facebook likes : %s" % str(common['ORIGINAL_FB_LIKES']))
+
+    @staticmethod
     def check_fb():
         # For comparison
-        PREVIOUS_FB_LIKES = FBvars['FB_LIKES']
+        PREVIOUS_FB_LIKES = common['FB_LIKES']
 
         # Retrieve new like figure
-        FBvars['FB_LIKES'] = FBWrapper.get_likes()
+        common['FB_LIKES'] = FBWrapper.get_likes()
     
-        if (FBvars['FB_LIKES'] > PREVIOUS_FB_LIKES and PREVIOUS_FB_LIKES > 0):
+        if (common['FB_LIKES'] > PREVIOUS_FB_LIKES and PREVIOUS_FB_LIKES > 0):
         
-            percentage = FB_LIKES_FACTOR * float(FBvars['FB_LIKES'] - FBvars['ORIGINAL_FB_LIKES']) / FBvars['ORIGINAL_FB_LIKES']
-            Debug.println("SUCCESS", "New Facebook like (Total: %s, up %d%%)" % (FBvars['FB_LIKES'], int(percentage*100/FB_LIKES_FACTOR)))
+            percentage = FB_LIKES_FACTOR * float(common['FB_LIKES'] - common['ORIGINAL_FB_LIKES']) / common['ORIGINAL_FB_LIKES']
+            Debug.println("SUCCESS", "New Facebook like (Total: %s, up %d%%)" % (common['FB_LIKES'], int(percentage*100/FB_LIKES_FACTOR)))
         
             # We have to recompute the color
             led.compute_color_for_percentage(percentage)
@@ -136,7 +174,7 @@ class FBWrapper(multiprocessing.Process):
 
     @staticmethod
     def get_likes():
-        response = urllib.urlopen(FBWrapper.url);
+        response = urllib.urlopen("http://graph.facebook.com/" + common['FB_PAGE'] + "/");
         data = json.loads(response.read())
         return data['likes']
 
@@ -170,7 +208,7 @@ class BlinkMWrapper():
     # Stop current running script
     self.bus.write_byte(DEVICE_ADDRESS, STOP_SCRIPT) 
 
-    # Stop current running script
+    # Color to Black
     self.bus.write_i2c_block_data(DEVICE_ADDRESS, FADE_RGB, OFF_COLOR) 
 
     # Set fade speed to fast, time adjust and blank light
@@ -220,11 +258,30 @@ class BlinkMWrapper():
     self.bus.write_i2c_block_data(DEVICE_ADDRESS, WRITE_SCRIPT_LINE,[SCRIPT_ID, line_nb + 3, 5, FADE_RGB] + FACEBOOK_BLINK_COLOR)
     time.sleep(0.05)
     # Line 9 : Fade to nothing
-    self.bus.write_i2c_block_data(DEVICE_ADDRESS, WRITE_SCRIPT_LINE,[0x00, line_nb + 4, 10, FADE_RGB] + OFF_COLOR)
+    self.bus.write_i2c_block_data(DEVICE_ADDRESS, WRITE_SCRIPT_LINE,[SCRIPT_ID, line_nb + 4, 10, FADE_RGB] + OFF_COLOR)
+    time.sleep(0.05)
+
+
+    ## Instagram Script
+    line_nb = 0x0A
+    # Line 5 : Fade to nothing
+    self.bus.write_i2c_block_data(DEVICE_ADDRESS, WRITE_SCRIPT_LINE,[SCRIPT_ID, line_nb + 0, 4, FADE_RGB] + OFF_COLOR)
+    time.sleep(0.05)
+    # Line 6 : Fade to facebook color
+    self.bus.write_i2c_block_data(DEVICE_ADDRESS, WRITE_SCRIPT_LINE,[SCRIPT_ID, line_nb + 1, 5, FADE_RGB] + INSTAGRAM_BLINK_COLOR)
+    time.sleep(0.05)
+    # Line 7 : Fade to nothing
+    self.bus.write_i2c_block_data(DEVICE_ADDRESS, WRITE_SCRIPT_LINE,[SCRIPT_ID, line_nb + 2, 4, FADE_RGB] + OFF_COLOR)
+    time.sleep(0.05)
+    # Line 8 : Fade to facebook color
+    self.bus.write_i2c_block_data(DEVICE_ADDRESS, WRITE_SCRIPT_LINE,[SCRIPT_ID, line_nb + 3, 5, FADE_RGB] + INSTAGRAM_BLINK_COLOR)
+    time.sleep(0.05)
+    # Line 9 : Fade to nothing
+    self.bus.write_i2c_block_data(DEVICE_ADDRESS, WRITE_SCRIPT_LINE,[SCRIPT_ID, line_nb + 4, 10, FADE_RGB] + OFF_COLOR)
     time.sleep(0.05)
 
     ## Set script length
-    self.bus.write_i2c_block_data(DEVICE_ADDRESS, SET_SCRIPT_LENGTH, [SCRIPT_ID, 56, 0x00])
+    self.bus.write_i2c_block_data(DEVICE_ADDRESS, SET_SCRIPT_LENGTH, [SCRIPT_ID, 84, 0x00])
     time.sleep(0.05)
 
     Debug.println("SUCCESS", "Script %s written to EEPROM" % hex(SCRIPT_ID))
@@ -242,6 +299,18 @@ class BlinkMWrapper():
     self.bus.write_i2c_block_data(DEVICE_ADDRESS, PLAY_SCRIPT,[SCRIPT_ID, PLAY_ONCE, 0x05])
     time.sleep(0.75)
     self.stop_animation()
+
+  def play_instagram(self):
+
+    self.animation_running = True
+    self.bus.write_i2c_block_data(DEVICE_ADDRESS, PLAY_SCRIPT,[SCRIPT_ID, PLAY_ONCE, 0x0A])
+    time.sleep(0.75)
+    self.stop_animation()
+
+  def play_error(self):
+
+    self.animation_running = True
+    self.bus.write_i2c_block_data(DEVICE_ADDRESS, PLAY_SCRIPT,[0x03, 0x00, 0x00])
 
   def init_sequence(self):
     self.animation_running = True
@@ -288,7 +357,7 @@ class MyStreamer(TwythonStreamer):
             led.play_twitter()
 
             # And maybe the sound ...
-            if HASHTAG_COMPLEMENTARY in data['text']:
+            if common['HASHTAG_COMPLEMENTARY'] in data['text']:
                 message = "New POWER tweet : " + tweet
                 sound.play_random_sound()
             else:
@@ -299,20 +368,52 @@ class MyStreamer(TwythonStreamer):
 
     def on_error(self, status_code, data):
         Debug.println("FAIL", "Error %d" % status_code)
-        # self.disconnect()
+        led.play_error()
+        #self.disconnect()
 
 
 class TwitterWrapper(multiprocessing.Process):
 
     def run(self):
-      Debug.println("NOTICE", "Process started for Twitter stream %s(%s)... " % (HASHTAG, HASHTAG_COMPLEMENTARY))
+      Debug.println("NOTICE", "Process started for Twitter stream %s(%s)... " % (common['HASHTAG'], common['HASHTAG_COMPLEMENTARY']))
       stream = MyStreamer(APP_KEY, APP_SECRET, ACCESS_TOKEN, ACCESS_TOKEN_SECRET)
       try:
-        stream.statuses.filter(track=HASHTAG)
+        stream.statuses.filter(track=common['HASHTAG'])
       except KeyboardInterrupt:
         Debug.println("NOTICE", "Twitter process stopped.")
 
 
+#####################################
+#    Instagram Stream API wrapper   #
+#####################################
+from instagram import client, subscriptions
+from instagram.client import InstagramAPI
+
+class InstagramWrapper(multiprocessing.Process):
+
+    def run(self):
+        global CLIENT_ID, CLIENT_SECRET
+        InstagramWrapper.api = InstagramAPI(client_id=CLIENT_ID, client_secret=CLIENT_SECRET)
+        InstagramWrapper.max_tag_id = 0 # start off with 0
+
+        try:
+            while (True):
+                time.sleep(1.1)
+                InstagramWrapper.check_tags()
+
+        except KeyboardInterrupt:
+            Debug.println("NOTICE", "Instagram process stopped.")
+
+    @staticmethod
+    def check_tags():
+        # get recent
+        instagram_post, next = InstagramWrapper.api.tag_recent_media(1, InstagramWrapper.max_tag_id, common['HASHTAG'][1:])
+
+        if len(instagram_post) > 0:
+            # Play the animation
+            led.play_instagram()
+            Debug.println("SUCCESS", "New Instagram : " + instagram_post[0].images['standard_resolution'].url)
+            InstagramWrapper.max_tag_id = instagram_post[0].id
 
 #####################################
 #     Twitter Stream API wrapper    #
@@ -333,8 +434,13 @@ class SoundsWrapper:
             Debug.println("INFO", "Creating sound : %s" % s)
             self.notification_sounds.append(mixer.Sound(s))
 
+        self.startup_sound = mixer.Sound(GLOBAL_PATH + "/sounds/LetsGo.wav")
+
     def play_random_sound(self):
         random.choice(self.notification_sounds).play()
+
+    def play_startup_sound(self):
+        self.startup_sound.play()
 
     def __del__(self):
         mixer.quit()
@@ -348,37 +454,67 @@ led = BlinkMWrapper()
 sound = SoundsWrapper()
 
 # Getting FB likes
-FBWrapper().start()
+fb_process = FBWrapper();
+fb_process.start()
 
 # Start web server
-BottleWrapper().start()
+webserver_process = BottleWrapper()
+webserver_process.start()
 
 # Get Twitter stream
-TwitterWrapper().start()
+twitter_process = TwitterWrapper()
+twitter_process.start()
+
+# Get Instagram stream
+instagram_process = InstagramWrapper()
+instagram_process.start()
 
 # Wait for processes to start 
 time.sleep(2)
 
-# Starting lights !
+# Starting lights and sound !
+sound.play_random_sound()
 Debug.println("SUCCESS", "Blinking lights ! Ready to start !")
 led.init_sequence()
 
 try:
     while(True):
-        pass
+
+        if common['RELOAD_TWITTER'] == True:
+            common['RELOAD_TWITTER'] = False
+            twitter_process.terminate()
+            twitter_process.join()
+            Debug.println("NOTICE", "Twitter process stopped for hashtag change.")
+            Debug.println("NOTICE", "Waiting 2 seconds before restarting ...")
+            time.sleep(2)
+            twitter_process = TwitterWrapper()
+            twitter_process.start()
+
+        if common['SAVE_DATA'] == True:
+            Debug.println("NOTICE", "Saving data back to config.ini file.")
+            common['SAVE_DATA'] = False
+            config.set('TOTEM', 'HASHTAG', common['HASHTAG'])
+            config.set('TOTEM', 'HASHTAG_COMPLEMENTARY', common['HASHTAG_COMPLEMENTARY'])
+            config.set('TOTEM', 'FB_PAGE', common['FB_PAGE'])
+            with open(TOTEM_CONFIG, 'w') as configfile:
+                config.write(configfile)
+
 except KeyboardInterrupt:
+    # Stop current running script
+    led.reset_state()
+
     Debug.println("NOTICE", "Finishing threads ...")
 
     try:
-        BottleWrapper().join(1)
+        webserver_process.join(1)
     except AssertionError:
         pass
     try:
-        TwitterWrapper().join(1)
+        twitter_process.join(1)
     except AssertionError:
         pass
     try:
-        FBWrapper().join(1)
+        fb_process.join(1)
     except AssertionError:
         pass
 
