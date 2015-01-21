@@ -13,6 +13,9 @@ OFF_COLOR = [0x00, 0x00, 0x00] # Off / Black
 
 FB_LIKES_FACTOR = 10 # > 1
 
+# Wifis :
+CONFIGURED_WIFIS = [ ("SSID","Password") , ("Other_SSID","Other_Password")]
+
 # Twitter API
 APP_KEY = ''
 APP_SECRET = ''

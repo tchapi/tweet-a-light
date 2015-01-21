@@ -69,6 +69,36 @@ class Debug():
     logging.info("(" + level + ") " + message)
     print "  # " + Debug.colors[level] + level + Debug.colors["ENDC"] + " : " + message
 
+#####################################
+#           Wifi procedure          #
+#####################################
+from wifi import Cell, Scheme
+def connect_to_wifi():
+
+    wifis = Cell.all('wlan0')
+
+    # List comprehensions POOOOORN
+    connectable_wifis = [(wifi,item[1]) for wifi in wifis for item in CONFIGURED_WIFIS if item[0] == wifi.ssid]
+
+    if len(connectable_wifis) > 0:
+      # Connect to the first one
+      Debug.println("INFO", "Connecting to %s (%s)" % (connectable_wifis[0][0].ssid, connectable_wifis[0][1]))
+      scheme = Scheme.for_cell('wlan0', 'totem_wifi', connectable_wifis[0][0], connectable_wifis[0][1])
+
+      if Scheme.find('wlan0','totem_wifi') is None:
+        Debug.println("INFO", "Saving interface")
+        scheme.save()
+
+      # Connect for real
+      status = scheme.activate()
+
+      if status:
+          Debug.println("SUCCESS", "Connected to %s" % connectable_wifis[0][0].ssid)
+          return True;
+      else:
+          return False
+    else:
+      return False
 
 #####################################
 #        Wrapper for WebServer      #
@@ -448,6 +478,12 @@ class SoundsWrapper:
         mixer.quit()
 
 Debug.println("SUCCESS", "Starting application ...")
+
+# Try to connect to a configured wifi
+good_to_go = connect_to_wifi()
+if good_to_go == False:
+    Debug.println("FAIL", "Could not connect to any configured wifi, exiting ...")
+    sys.exit(0)
 
 # Instantiate the LED via I2C
 led = BlinkMWrapper()
