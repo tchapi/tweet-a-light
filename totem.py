@@ -204,9 +204,12 @@ class FBWrapper(multiprocessing.Process):
 
     @staticmethod
     def get_likes():
-        response = urllib.urlopen("http://graph.facebook.com/" + common['FB_PAGE'] + "/")
-        data = json.loads(response.read())
-        return data['likes']
+        try:
+            response = urllib.urlopen("http://graph.facebook.com/" + common['FB_PAGE'] + "/")
+            data = json.loads(response.read())
+            return data['likes']
+        except IOError:
+            return common['FB_LIKES'] # no changes
 
 
 #####################################
@@ -438,10 +441,13 @@ class InstagramWrapper(multiprocessing.Process):
     def check_tags():
         global CLIENT_ID
         # get recent
-        response = urllib.urlopen("https://api.instagram.com/v1/tags/" + common['HASHTAG'][1:] + "/media/recent?count=1&client_id=" + CLIENT_ID + ("&min_id=%d" % InstagramWrapper.min_id))
-        data = json.loads(response.read())
+        try:
+            response = urllib.urlopen("https://api.instagram.com/v1/tags/" + common['HASHTAG'][1:] + "/media/recent?count=1&client_id=" + CLIENT_ID + ("&min_id=%d" % InstagramWrapper.min_id))
+            data = json.loads(response.read())
+        except IOError:
+            data = None
         
-        if len(data['data']) > 0:
+        if data is not None and len(data['data']) > 0:
             # Play the animation
             led.play_instagram()
             Debug.println("SUCCESS", "New Instagram (%s) : %s " % (data['data'][0]['id'], data['data'][0]['images']['standard_resolution']['url']))
