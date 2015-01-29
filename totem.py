@@ -152,7 +152,7 @@ class BottleWrapper(multiprocessing.Process):
     def run(self):
       Debug.println("NOTICE", "Process started for web server on port 8080")
       try:
-        run(host='totem1.local', port=8080)
+        run(host='0.0.0.0', port=8080)
       finally:
         Debug.println("NOTICE", "Webserver process stopped.")
 
