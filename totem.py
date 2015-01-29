@@ -414,6 +414,8 @@ class TwitterWrapper(multiprocessing.Process):
         stream.statuses.filter(track=common['HASHTAG'])
       except KeyboardInterrupt:
         Debug.println("NOTICE", "Twitter process stopped.")
+      except ConnectionError:
+        common['RELOAD_TWITTER'] = True # Will it work ? - Restart the polling process
 
 
 #####################################
@@ -528,7 +530,7 @@ try:
             common['RELOAD_TWITTER'] = False
             twitter_process.terminate()
             twitter_process.join()
-            Debug.println("NOTICE", "Twitter process stopped for hashtag change.")
+            Debug.println("NOTICE", "Twitter process stopped.")
             Debug.println("NOTICE", "Waiting 2 seconds before restarting ...")
             time.sleep(2)
             twitter_process = TwitterWrapper()
