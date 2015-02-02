@@ -24,11 +24,14 @@ PLAY_ONCE = 0x01
 PLAY_FOREVER = 0x00
 SCRIPT_ID = 0x00
 RAINBOW_SEQUENCE = 0x0A
-ORANGES_REDS = 0x0E
+CYAN_FLASH = 0x06
+GREEN_FLASH = 0x04
 
 # Led parameters
-FADE_SPEED = 60 # 1 = slow, 255 = instant
-TIME_ADJUST = 0 # 0 = default
+BOOT_FADE_SPEED = 0x0A # 1 = slow, 255 = instant
+FADE_SPEED = 0x30 # 1 = slow, 255 = instant
+BOOT_TIME_ADJUST = 0 # 0 = default
+TIME_ADJUST = -12 # 0 = default
 
 import multiprocessing, time
 
@@ -200,9 +203,9 @@ class FBWrapper(multiprocessing.Process):
             Debug.println("SUCCESS", "New Facebook like (Total: %s, up %d%%)" % (common['FB_LIKES'], int(percentage*100/FB_LIKES_FACTOR)))
         
             # We have to recompute the color
-            led.compute_color_for_percentage(percentage)
+            totem.compute_color_for_percentage(percentage)
             # And play the light animation
-            led.play_facebook()
+            totem.play_facebook()
 
     @staticmethod
     def get_likes():
@@ -215,13 +218,51 @@ class FBWrapper(multiprocessing.Process):
 
 
 #####################################
-#      Wrapper for the Blink M      #
+#   Wrapper for the Physical stuff  #
 #####################################
 import smbus
+import glob, random, os
 
-class BlinkMWrapper():
+# Creating sounds
+sounds = glob.glob(GLOBAL_PATH + "/sounds/*.wav")
+notification_sounds = list()
+for s in sounds:
+    Debug.println("INFO", "Creating sound : %s" % s)
+    notification_sounds.append('aplay ' + GLOBAL_PATH + s + ' &')
+
+startup_sound = 'aplay ' + GLOBAL_PATH + "/sounds/LetsGo.wav" + ' &'
+facebook_sound = 'aplay ' + GLOBAL_PATH + "/sounds/Coin.wav" + ' &'
+twitter_sound = 'aplay ' + GLOBAL_PATH + "/sounds/CuiCui.wav" + ' &'
+power_sound = 'aplay ' + GLOBAL_PATH + "/sounds/Oohoo.wav" + ' &'
+instagram_sound = 'aplay ' + GLOBAL_PATH + "/sounds/Shutter.wav" + ' &'
+
+def play_power_sound():
+    os.system(twitter_sound)
+    os.system(power_sound)
+
+def play_startup_sound():
+    os.system(startup_sound)
+
+def play_facebook_sound():
+    os.system(facebook_sound)
+
+def play_twitter_sound():
+    os.system(twitter_sound)
+
+def play_instagram_sound():
+    os.system(instagram_sound)
+
+
+class TotemWrapper():
 
   def __init__(self):
+
+    # Constants for script
+
+    self.on_time = 24
+    self.off_time = 16
+    self.last_off_time = 10
+    self.script_length = 0.03333 * (2*(self.on_time + TIME_ADJUST) + 2*(self.off_time + TIME_ADJUST) + (self.last_off_time + TIME_ADJUST))
 
     # Get I2C bus
     self.bus = smbus.SMBus(1)
@@ -247,8 +288,8 @@ class BlinkMWrapper():
     self.bus.write_i2c_block_data(DEVICE_ADDRESS, FADE_RGB, OFF_COLOR) 
 
     # Set fade speed to fast, time adjust and blank light
-    self.bus.write_byte_data(DEVICE_ADDRESS, SET_FADE_SPEED, FADE_SPEED)
-    self.bus.write_byte_data(DEVICE_ADDRESS, SET_TIME_ADJUST, TIME_ADJUST)
+    self.bus.write_byte_data(DEVICE_ADDRESS, SET_FADE_SPEED, BOOT_FADE_SPEED)
+    self.bus.write_byte_data(DEVICE_ADDRESS, SET_TIME_ADJUST, BOOT_TIME_ADJUST)
 
   def stop_animation(self):
 
@@ -262,61 +303,61 @@ class BlinkMWrapper():
     ## Twitter Script
     line_nb = 0x00
     # Line 0 : Fade to nothing
-    self.bus.write_i2c_block_data(DEVICE_ADDRESS, WRITE_SCRIPT_LINE,[SCRIPT_ID, line_nb + 0, 4, FADE_RGB] + OFF_COLOR)
+    self.bus.write_i2c_block_data(DEVICE_ADDRESS, WRITE_SCRIPT_LINE,[SCRIPT_ID, line_nb + 0, self.off_time, FADE_RGB] + OFF_COLOR)
     time.sleep(0.05)
     # Line 1 : Fade to twitter color
-    self.bus.write_i2c_block_data(DEVICE_ADDRESS, WRITE_SCRIPT_LINE,[SCRIPT_ID, line_nb + 1, 5, FADE_RGB] + TWITTER_BLINK_COLOR)
+    self.bus.write_i2c_block_data(DEVICE_ADDRESS, WRITE_SCRIPT_LINE,[SCRIPT_ID, line_nb + 1, self.on_time, FADE_RGB] + TWITTER_BLINK_COLOR)
     time.sleep(0.05)
     # Line 2 : Fade to nothing
-    self.bus.write_i2c_block_data(DEVICE_ADDRESS, WRITE_SCRIPT_LINE,[SCRIPT_ID, line_nb + 2, 4, FADE_RGB] + OFF_COLOR)
+    self.bus.write_i2c_block_data(DEVICE_ADDRESS, WRITE_SCRIPT_LINE,[SCRIPT_ID, line_nb + 2, self.off_time, FADE_RGB] + OFF_COLOR)
     time.sleep(0.05)
     # Line 3 : Fade to twitter color
-    self.bus.write_i2c_block_data(DEVICE_ADDRESS, WRITE_SCRIPT_LINE,[SCRIPT_ID, line_nb + 3, 5, FADE_RGB] + TWITTER_BLINK_COLOR)
+    self.bus.write_i2c_block_data(DEVICE_ADDRESS, WRITE_SCRIPT_LINE,[SCRIPT_ID, line_nb + 3, self.on_time, FADE_RGB] + TWITTER_BLINK_COLOR)
     time.sleep(0.05)
     # Line 4 : Fade to nothing
-    self.bus.write_i2c_block_data(DEVICE_ADDRESS, WRITE_SCRIPT_LINE,[SCRIPT_ID, line_nb + 4, 10, FADE_RGB] + OFF_COLOR)
+    self.bus.write_i2c_block_data(DEVICE_ADDRESS, WRITE_SCRIPT_LINE,[SCRIPT_ID, line_nb + 4, self.last_off_time, FADE_RGB] + OFF_COLOR)
     time.sleep(0.05)
 
 
     ## Facebook Script
     line_nb = 0x05
     # Line 5 : Fade to nothing
-    self.bus.write_i2c_block_data(DEVICE_ADDRESS, WRITE_SCRIPT_LINE,[SCRIPT_ID, line_nb + 0, 4, FADE_RGB] + OFF_COLOR)
+    self.bus.write_i2c_block_data(DEVICE_ADDRESS, WRITE_SCRIPT_LINE,[SCRIPT_ID, line_nb + 0, self.off_time, FADE_RGB] + OFF_COLOR)
     time.sleep(0.05)
     # Line 6 : Fade to facebook color
-    self.bus.write_i2c_block_data(DEVICE_ADDRESS, WRITE_SCRIPT_LINE,[SCRIPT_ID, line_nb + 1, 5, FADE_RGB] + FACEBOOK_BLINK_COLOR)
+    self.bus.write_i2c_block_data(DEVICE_ADDRESS, WRITE_SCRIPT_LINE,[SCRIPT_ID, line_nb + 1, self.on_time, FADE_RGB] + FACEBOOK_BLINK_COLOR)
     time.sleep(0.05)
     # Line 7 : Fade to nothing
-    self.bus.write_i2c_block_data(DEVICE_ADDRESS, WRITE_SCRIPT_LINE,[SCRIPT_ID, line_nb + 2, 4, FADE_RGB] + OFF_COLOR)
+    self.bus.write_i2c_block_data(DEVICE_ADDRESS, WRITE_SCRIPT_LINE,[SCRIPT_ID, line_nb + 2, self.off_time, FADE_RGB] + OFF_COLOR)
     time.sleep(0.05)
     # Line 8 : Fade to facebook color
-    self.bus.write_i2c_block_data(DEVICE_ADDRESS, WRITE_SCRIPT_LINE,[SCRIPT_ID, line_nb + 3, 5, FADE_RGB] + FACEBOOK_BLINK_COLOR)
+    self.bus.write_i2c_block_data(DEVICE_ADDRESS, WRITE_SCRIPT_LINE,[SCRIPT_ID, line_nb + 3, self.on_time, FADE_RGB] + FACEBOOK_BLINK_COLOR)
     time.sleep(0.05)
     # Line 9 : Fade to nothing
-    self.bus.write_i2c_block_data(DEVICE_ADDRESS, WRITE_SCRIPT_LINE,[SCRIPT_ID, line_nb + 4, 10, FADE_RGB] + OFF_COLOR)
+    self.bus.write_i2c_block_data(DEVICE_ADDRESS, WRITE_SCRIPT_LINE,[SCRIPT_ID, line_nb + 4, self.last_off_time, FADE_RGB] + OFF_COLOR)
     time.sleep(0.05)
 
 
     ## Instagram Script
     line_nb = 0x0A
     # Line 5 : Fade to nothing
-    self.bus.write_i2c_block_data(DEVICE_ADDRESS, WRITE_SCRIPT_LINE,[SCRIPT_ID, line_nb + 0, 4, FADE_RGB] + OFF_COLOR)
+    self.bus.write_i2c_block_data(DEVICE_ADDRESS, WRITE_SCRIPT_LINE,[SCRIPT_ID, line_nb + 0, self.off_time, FADE_RGB] + OFF_COLOR)
     time.sleep(0.05)
     # Line 6 : Fade to facebook color
-    self.bus.write_i2c_block_data(DEVICE_ADDRESS, WRITE_SCRIPT_LINE,[SCRIPT_ID, line_nb + 1, 5, FADE_RGB] + INSTAGRAM_BLINK_COLOR)
+    self.bus.write_i2c_block_data(DEVICE_ADDRESS, WRITE_SCRIPT_LINE,[SCRIPT_ID, line_nb + 1, self.on_time, FADE_RGB] + INSTAGRAM_BLINK_COLOR)
     time.sleep(0.05)
     # Line 7 : Fade to nothing
-    self.bus.write_i2c_block_data(DEVICE_ADDRESS, WRITE_SCRIPT_LINE,[SCRIPT_ID, line_nb + 2, 4, FADE_RGB] + OFF_COLOR)
+    self.bus.write_i2c_block_data(DEVICE_ADDRESS, WRITE_SCRIPT_LINE,[SCRIPT_ID, line_nb + 2, self.off_time, FADE_RGB] + OFF_COLOR)
     time.sleep(0.05)
     # Line 8 : Fade to facebook color
-    self.bus.write_i2c_block_data(DEVICE_ADDRESS, WRITE_SCRIPT_LINE,[SCRIPT_ID, line_nb + 3, 5, FADE_RGB] + INSTAGRAM_BLINK_COLOR)
+    self.bus.write_i2c_block_data(DEVICE_ADDRESS, WRITE_SCRIPT_LINE,[SCRIPT_ID, line_nb + 3, self.on_time, FADE_RGB] + INSTAGRAM_BLINK_COLOR)
     time.sleep(0.05)
     # Line 9 : Fade to nothing
-    self.bus.write_i2c_block_data(DEVICE_ADDRESS, WRITE_SCRIPT_LINE,[SCRIPT_ID, line_nb + 4, 10, FADE_RGB] + OFF_COLOR)
+    self.bus.write_i2c_block_data(DEVICE_ADDRESS, WRITE_SCRIPT_LINE,[SCRIPT_ID, line_nb + 4, self.last_off_time, FADE_RGB] + OFF_COLOR)
     time.sleep(0.05)
 
     ## Set script length
-    self.bus.write_i2c_block_data(DEVICE_ADDRESS, SET_SCRIPT_LENGTH, [SCRIPT_ID, 84, 0x00])
+    self.bus.write_i2c_block_data(DEVICE_ADDRESS, SET_SCRIPT_LENGTH, [SCRIPT_ID, 6*self.on_time + 6*self.off_time + 3*self.last_off_time, 0x00])
     time.sleep(0.05)
 
     Debug.println("SUCCESS", "Script %s written to EEPROM" % hex(SCRIPT_ID))
@@ -324,22 +365,33 @@ class BlinkMWrapper():
   def play_twitter(self):
 
     self.animation_running = True
+    play_twitter_sound()
     self.bus.write_i2c_block_data(DEVICE_ADDRESS, PLAY_SCRIPT,[SCRIPT_ID, PLAY_ONCE, 0x00])
-    time.sleep(0.75)
+    time.sleep(self.script_length)
+    self.stop_animation()
+
+  def play_power_twitter(self):
+
+    self.animation_running = True
+    play_power_sound()
+    self.bus.write_i2c_block_data(DEVICE_ADDRESS, PLAY_SCRIPT,[SCRIPT_ID, PLAY_ONCE, 0x00])
+    time.sleep(self.script_length)
     self.stop_animation()
 
   def play_facebook(self):
 
     self.animation_running = True
+    play_facebook_sound()
     self.bus.write_i2c_block_data(DEVICE_ADDRESS, PLAY_SCRIPT,[SCRIPT_ID, PLAY_ONCE, 0x05])
-    time.sleep(0.75)
+    time.sleep(self.script_length)
     self.stop_animation()
 
   def play_instagram(self):
 
     self.animation_running = True
+    play_instagram_sound()
     self.bus.write_i2c_block_data(DEVICE_ADDRESS, PLAY_SCRIPT,[SCRIPT_ID, PLAY_ONCE, 0x0A])
-    time.sleep(0.75)
+    time.sleep(self.script_length)
     self.stop_animation()
 
   def play_error(self):
@@ -349,15 +401,23 @@ class BlinkMWrapper():
 
   def looking_for_wifi(self):
     self.animation_running = True
-    self.bus.write_i2c_block_data(DEVICE_ADDRESS, PLAY_SCRIPT,[ORANGES_REDS, PLAY_FOREVER, 0x00])
+    self.bus.write_i2c_block_data(DEVICE_ADDRESS, PLAY_SCRIPT,[CYAN_FLASH, PLAY_FOREVER, 0x00])
+
+  def wifi_found(self):
+    self.animation_running = True
+    self.bus.write_i2c_block_data(DEVICE_ADDRESS, PLAY_SCRIPT,[GREEN_FLASH, PLAY_ONCE * 3, 0x00])
+    time.sleep(1)
 
   def init_sequence(self):
     self.animation_running = True
-    self.bus.write_byte_data(DEVICE_ADDRESS, SET_TIME_ADJUST, -10) # We play it quicker
+    play_startup_sound()
     self.bus.write_i2c_block_data(DEVICE_ADDRESS, PLAY_SCRIPT,[RAINBOW_SEQUENCE, PLAY_ONCE, 0x00])
-    time.sleep(5)
+    time.sleep(4.5)
     self.stop_animation()
-    self.bus.write_byte_data(DEVICE_ADDRESS, SET_TIME_ADJUST, TIME_ADJUST) # And revert the timing adjustment back
+
+    # Real stuff now
+    self.bus.write_byte_data(DEVICE_ADDRESS, SET_FADE_SPEED, FADE_SPEED)
+    self.bus.write_byte_data(DEVICE_ADDRESS, SET_TIME_ADJUST, TIME_ADJUST)
 
     self.change_color()
 
@@ -380,7 +440,6 @@ class BlinkMWrapper():
     if self.animation_running is False:
         self.bus.write_i2c_block_data(DEVICE_ADDRESS, FADE_RGB, self.general_color)
 
-
 #####################################
 #     Twitter Stream API wrapper    #
 #####################################
@@ -392,22 +451,20 @@ class MyStreamer(TwythonStreamer):
             # Strip carriage / returns
             tweet = data['text'].encode('utf-8').replace(chr(10),' ').replace(chr(13),'')
 
-            # Play the animation
-            led.play_twitter()
-
             # And maybe the sound ...
             if common['HASHTAG_COMPLEMENTARY'] in data['text']:
                 message = "New POWER tweet : " + tweet
-                sound.play_random_sound()
+                totem.play_power_twitter()
             else:
                 message = "New tweet : " + tweet
+                totem.play_twitter()
             
             Debug.println("SUCCESS", message)
             
 
     def on_error(self, status_code, data):
         Debug.println("FAIL", "Error %d" % status_code)
-        led.play_error()
+        totem.play_error()
         #self.disconnect()
 
 
@@ -457,45 +514,15 @@ class InstagramWrapper(multiprocessing.Process):
         
         if data is not None and len(data['data']) > 0:
             # Play the animation
-            led.play_instagram()
+            totem.play_instagram()
             Debug.println("SUCCESS", "New Instagram (%s) : %s " % (data['data'][0]['id'], data['data'][0]['images']['standard_resolution']['url']))
             InstagramWrapper.min_id = int(data['pagination']['min_tag_id'])
-
-#####################################
-#     Twitter Stream API wrapper    #
-#####################################
-import glob, random
-from pygame import mixer
-
-class SoundsWrapper:
-
-    def __init__(self):
-        # Creates an audio mixer for sound playing
-        Debug.println("INFO", "Creating audio mixer ...")
-        mixer.init()
-
-        sounds = glob.glob(GLOBAL_PATH + "/sounds/*.wav")
-        self.notification_sounds = list()
-        for s in sounds:
-            Debug.println("INFO", "Creating sound : %s" % s)
-            self.notification_sounds.append(mixer.Sound(s))
-
-        self.startup_sound = mixer.Sound(GLOBAL_PATH + "/sounds/LetsGo.wav")
-
-    def play_random_sound(self):
-        random.choice(self.notification_sounds).play()
-
-    def play_startup_sound(self):
-        self.startup_sound.play()
-
-    def __del__(self):
-        mixer.quit()
 
 Debug.println("SUCCESS", "Starting application ...")
 
 # Instantiate the LED via I2C
-led = BlinkMWrapper()
-led.looking_for_wifi()
+totem = TotemWrapper()
+totem.looking_for_wifi()
 
 # Try to connect to a configured wifi
 good_to_go = connect_to_wifi()
@@ -503,8 +530,7 @@ if good_to_go == False:
     Debug.println("FAIL", "Could not connect to any configured wifi, exiting ...")
     sys.exit(0)
 
-# Instantiate the mixer and sounds
-sound = SoundsWrapper()
+totem.wifi_found()
 
 # Getting FB likes
 fb_process = FBWrapper();
@@ -526,9 +552,10 @@ instagram_process.start()
 time.sleep(2)
 
 # Starting lights and sound !
-sound.play_startup_sound()
 Debug.println("SUCCESS", "Blinking lights ! Ready to start !")
-led.init_sequence()
+totem.init_sequence()
+
+time.sleep(30)
 
 try:
     while(True):
@@ -554,7 +581,7 @@ try:
 
 except KeyboardInterrupt:
     # Stop current running script
-    led.reset_state()
+    totem.reset_state()
 
     Debug.println("NOTICE", "Finishing threads ...")
 
