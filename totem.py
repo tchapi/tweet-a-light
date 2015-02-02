@@ -21,8 +21,10 @@ SET_SCRIPT_LENGTH = 0x4c
 SET_BLINKM_ADDRESS = 0x41
 
 PLAY_ONCE = 0x01
+PLAY_FOREVER = 0x00
 SCRIPT_ID = 0x00
 RAINBOW_SEQUENCE = 0x0A
+ORANGES_REDS = 0x0E
 
 # Led parameters
 FADE_SPEED = 60 # 1 = slow, 255 = instant
@@ -345,6 +347,10 @@ class BlinkMWrapper():
     self.animation_running = True
     self.bus.write_i2c_block_data(DEVICE_ADDRESS, PLAY_SCRIPT,[0x03, 0x00, 0x00])
 
+  def looking_for_wifi(self):
+    self.animation_running = True
+    self.bus.write_i2c_block_data(DEVICE_ADDRESS, PLAY_SCRIPT,[ORANGES_REDS, PLAY_FOREVER, 0x00])
+
   def init_sequence(self):
     self.animation_running = True
     self.bus.write_byte_data(DEVICE_ADDRESS, SET_TIME_ADJUST, -10) # We play it quicker
@@ -487,14 +493,15 @@ class SoundsWrapper:
 
 Debug.println("SUCCESS", "Starting application ...")
 
+# Instantiate the LED via I2C
+led = BlinkMWrapper()
+led.looking_for_wifi()
+
 # Try to connect to a configured wifi
 good_to_go = connect_to_wifi()
 if good_to_go == False:
     Debug.println("FAIL", "Could not connect to any configured wifi, exiting ...")
     sys.exit(0)
-
-# Instantiate the LED via I2C
-led = BlinkMWrapper()
 
 # Instantiate the mixer and sounds
 sound = SoundsWrapper()
